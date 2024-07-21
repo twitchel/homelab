@@ -24,8 +24,8 @@ echo -e " \033[32;5m                                                            
 # 1. Ensure required dependencies are installed
 check_dependencies_installed
 
-# 2. Initialize k3s cluster
-./scripts/1-init-k3s/init-k3s.sh "$PWD"
-
-exit 0;
-
+ask_before_running_task "🚀  Do you want to initialize the k3s cluster?"
+if [[ $? -eq 0 ]]; then
+  # 2. Initialize k3s cluster
+  ./scripts/1-init-k3s/init-k3s.sh "$PWD"
+fi

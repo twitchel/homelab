@@ -40,3 +40,16 @@ check_dependencies_installed() {
     exit 1
   fi
 }
+
+ask_before_running_task() {
+  local message=$1
+  local exitCode=0
+  read -p "$message [y/N] " choice
+  case "$choice" in
+    y|Y ) return 0;;
+    n|N ) return 1;;
+    * ) return 3;;
+  esac
+
+  return 3
+}
