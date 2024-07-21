@@ -25,7 +25,7 @@ echo -e " \033[32;5m                                                            
 check_dependencies_installed
 
 # 2. Initialize k3s cluster
-./scripts/init-k3s.sh "$PWD"
+./scripts/1-init-k3s/init-k3s.sh "$PWD"
 
 exit 0;
 

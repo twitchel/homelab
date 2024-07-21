@@ -98,7 +98,7 @@ kubectl $kubeConfigArgs apply -f https://kube-vip.io/manifests/rbac.yaml
 
 # Step 3: Process kube-vip
 echo_task "3. Process kube-vip"
-cat "$PWD/scripts/kube-vip.yaml.tmpl" | sed 's/$interface/'$interface'/g; s/$vip/'$vip'/g' > "$outputDir/kube-vip.yaml"
+cat "$PWD/scripts/1-init-k3s/kube-vip.yaml.tmpl" | sed 's/$interface/'$interface'/g; s/$vip/'$vip'/g' > "$outputDir/kube-vip.yaml"
 
 # Step 4: Copy kube-vip.yaml to master1
 echo_task "4. Copy kube-vip.yaml to master1"
@@ -156,7 +156,7 @@ while [[ $(kubectl $kubeConfigArgs get pods --all-namespaces -l app=metallb -o '
 done
 
 # Download ipAddressPool and configure using lbrange above
-cat "$PWD/scripts/ipAddressPool.yaml.tmpl" | sed 's/$lbrange/'$lbrange'/g' > "$outputDir/ipAddressPool.yaml"
+cat "$PWD/scripts/1-init-k3s/ipAddressPool.yaml.tmpl" | sed 's/$lbrange/'$lbrange'/g' > "$outputDir/ipAddressPool.yaml"
 kubectl $kubeConfigArgs apply -f "$outputDir/ipAddressPool.yaml"
 
 # Step 9: Test with Nginx
@@ -172,7 +172,7 @@ done
 
 # Step 10: Deploy IP Pools and l2Advertisement
 echo_task "10. Deploy IP Pools and l2Advertisement"
-cp "$PWD/scripts/l2Advertisement.yaml" "$outputDir/l2Advertisement.yaml"
+cp "$PWD/scripts/1-init-k3s/l2Advertisement.yaml" "$outputDir/l2Advertisement.yaml"
 kubectl $kubeConfigArgs wait --namespace metallb-system \
   --for=condition=ready pod \
   --selector=component=controller \
