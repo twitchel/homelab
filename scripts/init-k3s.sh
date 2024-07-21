@@ -1,13 +1,13 @@
 #!/bin/bash
 
-#############################################
-# YOU SHOULD ONLY NEED TO EDIT THIS SECTION #
-#############################################
+# Set run from dir
+PWD=$1
+
+# Include bootstrap
+source $PWD/scripts/bootstrap.sh
 
 deployEnv=staging
 
-# Set run from dir
-PWD=$1
 
 # Artefacts go here
 outputDir="$PWD/output/$deployEnv"
@@ -62,10 +62,13 @@ kubeConfigPath="$kubeConfigDir/config-$deployEnv"
 kubeConfigArgs="--kubeconfig=$kubeConfigPath"
 
 # Install policycoreutils for each node
+echo_task "0. Setup PolicyCoreUtils on all nodes"
 for newnode in "${all[@]}"; do
   ssh $remoteUser@$newnode -i ~/.ssh/$certName sudo su <<EOF
+  echo "Restart time-date service"
   sudo timedatectl set-ntp off
   sudo timedatectl set-ntp on
+  echo "Install PolicyCoreUtils"
   NEEDRESTART_MODE=a apt install policycoreutils -y
   exit
 EOF
@@ -73,6 +76,7 @@ EOF
 done
 
 # Step 1: Bootstrap First k3s Node
+echo_task "1. Bootstrap First k3s Node"
 mkdir -p $kubeConfigDir
 k3sup install \
   --ip $master1 \
@@ -89,22 +93,28 @@ k3sup install \
 echo -e " \033[32;5mFirst Node bootstrapped successfully!\033[0m"
 
 # Step 2: Install Kube-VIP for HA
+echo_task "2. Install Kube-VIP for HA"
 kubectl $kubeConfigArgs apply -f https://kube-vip.io/manifests/rbac.yaml
 
 # Step 3: Process kube-vip
-cat "$PWD/scripts/kube-vip" | sed 's/$interface/'$interface'/g; s/$vip/'$vip'/g' > "$outputDir/kube-vip.yaml"
+echo_task "3. Process kube-vip"
+cat "$PWD/scripts/kube-vip.yaml.tmpl" | sed 's/$interface/'$interface'/g; s/$vip/'$vip'/g' > "$outputDir/kube-vip.yaml"
 
 # Step 4: Copy kube-vip.yaml to master1
+echo_task "4. Copy kube-vip.yaml to master1"
 scp -i ~/.ssh/$certName "$outputDir/kube-vip.yaml" $remoteUser@$master1:~/kube-vip.yaml
 
 # Step 5: Connect to Master1 and move kube-vip.yaml
+echo_task "5. Connect to Master1 and move kube-vip.yaml"
 ssh $remoteUser@$master1 -i ~/.ssh/$certName <<-EOF
   sudo mkdir -p /var/lib/rancher/k3s/server/manifests
   sudo mv kube-vip.yaml /var/lib/rancher/k3s/server/manifests/kube-vip.yaml
 EOF
 
 # Step 6: Add new master nodes (servers) & workers
+echo_task "6. Add new master nodes (servers) & workers"
 for newnode in "${masters[@]}"; do
+  echo_task "6.1. Adding new master node $newnode"
   k3sup join \
     --ip $newnode \
     --user $remoteUser \
@@ -120,6 +130,7 @@ done
 
 # add workers
 for newagent in "${workers[@]}"; do
+  echo_task "6.2. Adding new worker node $newagent"
   k3sup join \
     --ip $newagent \
     --user $remoteUser \
@@ -132,16 +143,24 @@ for newagent in "${workers[@]}"; do
 done
 
 # Step 7: Install kube-vip as network LoadBalancer - Install the kube-vip Cloud Provider
+echo_task "7. Install kube-vip as network LoadBalancer - Install the kube-vip Cloud Provider"
 kubectl $kubeConfigArgs apply -f https://raw.githubusercontent.com/kube-vip/kube-vip-cloud-provider/main/manifest/kube-vip-cloud-controller.yaml
 
 # Step 8: Install Metallb
+echo_task "8. Install Metallb"
 kubectl $kubeConfigArgs apply -f https://raw.githubusercontent.com/metallb/metallb/v0.12.1/manifests/namespace.yaml
 kubectl $kubeConfigArgs apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml
+
+while [[ $(kubectl $kubeConfigArgs get pods --all-namespaces -l app=metallb -o 'jsonpath={..status.conditions[?(@.type=="Ready")].status}') = *"False"* ]]; do
+  sleep 1
+done
+
 # Download ipAddressPool and configure using lbrange above
 cat "$PWD/scripts/ipAddressPool.yaml.tmpl" | sed 's/$lbrange/'$lbrange'/g' > "$outputDir/ipAddressPool.yaml"
 kubectl $kubeConfigArgs apply -f "$outputDir/ipAddressPool.yaml"
 
 # Step 9: Test with Nginx
+echo_task "9. Test with Nginx"
 kubectl $kubeConfigArgs apply -f https://raw.githubusercontent.com/inlets/inlets-operator/master/contrib/nginx-sample-deployment.yaml -n default
 kubectl $kubeConfigArgs expose deployment nginx-1 --port=80 --type=LoadBalancer -n default
 
@@ -152,6 +171,7 @@ while [[ $(kubectl $kubeConfigArgs get pods -l app=nginx -o 'jsonpath={..status.
 done
 
 # Step 10: Deploy IP Pools and l2Advertisement
+echo_task "10. Deploy IP Pools and l2Advertisement"
 cp "$PWD/scripts/l2Advertisement.yaml" "$outputDir/l2Advertisement.yaml"
 kubectl $kubeConfigArgs wait --namespace metallb-system \
   --for=condition=ready pod \
